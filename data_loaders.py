@@ -48,9 +48,10 @@ class CityscapesLoader():
 
     
     @tf.function
-    def load_image_train(self, datapoint):
-        img = datapoint['image_left']
-        seg = datapoint['segmentation_label']
+    def load_image_train(self, img, seg):
+        
+        img = tf.cast(img, tf.uint8)
+        seg = tf.cast(seg, tf.uint8)
         
         if tf.random.uniform(()) > 0.5:
             img = tf.image.flip_left_right(img)
@@ -69,15 +70,13 @@ class CityscapesLoader():
             img = tf.image.random_hue(img, 0.05)
         
         seg = tf.squeeze(seg)
-        seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
+        #seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
         
         return img, seg
     
     
     @tf.function
-    def load_image_test(self, datapoint):
-        img = datapoint['image_left']
-        seg = datapoint['segmentation_label']
+    def load_image_test(self, img, seg):
         
         img = tf.image.resize(img, (self.img_height, self.img_width), method='bilinear')
         seg = tf.image.resize(seg, (self.img_height, self.img_width), method='nearest')
@@ -85,20 +84,19 @@ class CityscapesLoader():
         img = self.normalize(tf.cast(img, tf.float32))
         
         seg = tf.squeeze(seg, axis=-1)
-        seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
+        #seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
         
         return img, seg
     
     
     @tf.function
-    def load_image_eval(self, datapoint):
-        img = datapoint['image_left']
-        seg = datapoint['segmentation_label']
+    def load_image_eval(self, img, seg):
+        
         seg = tf.expand_dims(seg, axis=-1)
         img = tf.image.resize(img, (self.img_height, self.img_width), method='bilinear')
         img = self.normalize(tf.cast(img, tf.float32))
         seg = tf.squeeze(seg)
-        seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
+        #seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
         return img, seg
 
 
