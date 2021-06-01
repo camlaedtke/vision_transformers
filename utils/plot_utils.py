@@ -89,3 +89,10 @@ def display(display_list, title=True):
     plt.tight_layout()
     plt.show()
 
+    
+def create_mask(pred_mask):
+    pred_mask = tf.squeeze(pred_mask)
+    pred_mask = tf.argmax(pred_mask, axis=-1)
+    pred_mask = pred_mask[..., tf.newaxis]
+    pred_mask = label_to_rgb(pred_mask.numpy())
+    return pred_mask

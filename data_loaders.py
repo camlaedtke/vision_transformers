@@ -13,10 +13,6 @@ class CityscapesLoader():
         self.img_width = img_width
         self.MEAN = np.array([0.485, 0.456, 0.406])
         self.STD = np.array([0.229, 0.224, 0.225])
-        self.id2label = tf.constant([0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 3,  
-                                    4, 5, 0, 0, 0, 6, 0, 7, 8, 9, 10, 11, 
-                                    12, 13, 14, 15, 16, 0, 0, 17, 18, 19, 0], tf.int32)
-        
 
     @tf.function
     def random_crop(self, img, seg):
@@ -69,8 +65,7 @@ class CityscapesLoader():
             img = tf.image.random_contrast(img, 0.7, 1.3)
             img = tf.image.random_hue(img, 0.05)
         
-        seg = tf.squeeze(seg)
-        #seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
+        seg = tf.squeeze(tf.cast(seg, tf.int32))
         
         return img, seg
     
@@ -83,8 +78,7 @@ class CityscapesLoader():
         
         img = self.normalize(tf.cast(img, tf.float32))
         
-        seg = tf.squeeze(seg, axis=-1)
-        #seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
+        seg = tf.squeeze(tf.cast(seg, tf.int32), axis=-1)
         
         return img, seg
     
@@ -95,8 +89,8 @@ class CityscapesLoader():
         seg = tf.expand_dims(seg, axis=-1)
         img = tf.image.resize(img, (self.img_height, self.img_width), method='bilinear')
         img = self.normalize(tf.cast(img, tf.float32))
-        seg = tf.squeeze(seg)
-        #seg = tf.gather(self.id2label, tf.cast(seg, tf.int32))
+        seg = tf.squeeze(tf.cast(seg, tf.int32))
+
         return img, seg
 
 

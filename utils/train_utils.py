@@ -4,6 +4,16 @@ from time import time
 from tqdm import tqdm
 
 
+
+def weighted_cross_entropy_loss(y_true_labels, y_pred_logits):
+    c_weights = [0.0,    2.602,  6.707,  3.522,  9.877, 9.685,  9.398,  10.288, 9.969,  4.336, 
+                 9.454,  7.617,  9.405,  10.359, 6.373, 10.231, 10.262, 10.264, 10.394, 10.094] 
+    losses = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_true_labels, logits=y_pred_logits)  
+    weights = tf.gather(c_weights, y_true_labels)  
+    losses = tf.multiply(losses, weights)
+    return tf.math.reduce_mean(losses)
+
+
 class TrainAccumilator:
     
     # TODO: Change hard-coded metrics and callbacks

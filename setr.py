@@ -131,4 +131,127 @@ class TransformerBlock(tf.keras.layers.Layer):
             "dropout": self.dropout,
         }
     
+    
+def aux_head(x, n, image_size, hidden_size, num_classes):
+    y_aux = Lambda(lambda v: v[:, 1:], name="Aux_{}_ExtractToken".format(n))(x)
+    y_aux = LayerNormalization(epsilon=1e-6, name="Aux_{}_norm".format(n))(y_aux)
+    y_aux = Reshape(target_shape=(int(image_size//16), int(image_size//16), hidden_size))(y_aux)
+    
+    y_aux = Conv2D(hidden_size, kernel_size=(3,3), strides=(1,1), padding='same', 
+                   name="Aux_{}_conv_1".format(n))(y_aux)
+    y_aux = BatchNormalization(name="Aux_{}_bn".format(n))(y_aux)
+    y_aux = Activation("relu", name="Aux_{}_relu".format(n))(y_aux)
+    y_aux = UpSampling2D(size=(8,8), interpolation='bilinear', name="Aux_{}_upsample_1".format(n))(y_aux)
+    y_aux = Conv2D(256, kernel_size=(1,1), strides=(1,1), padding='same', name="Aux_{}_conv_2".format(n))(y_aux)
+    y_aux = UpSampling2D(size=(8,8), interpolation='bilinear', name="Aux_{}_upsample_2".format(n))(y_aux)
+    
+    y_aux = Conv2D(num_classes, kernel_size=(1,1), strides=(1,1), padding='same', 
+                     dtype='float32', name="Aux_{}_output".format(n))(y_aux)
+    
+    return y_aux
 
+
+def get_aux_heads(y_list, image_size, hidden_size, num_classes, aux_layers):
+    
+    y_aux_list = []
+    for i in range(0, len(y_list)):
+        y_aux = aux_head(y_list[i], aux_layers[i], image_size, hidden_size, num_classes)
+        y_aux_list.append(y_aux)
+        
+    return list(y_aux_list)
+
+
+def get_decode_head(y, image_size, hidden_size, num_classes):
+    
+    y = Reshape(target_shape=(int(image_size//16), int(image_size//16), hidden_size))(y)
+    
+    y = UpSampling2D(size=(2,2), interpolation='bilinear', name="Decode_upsample_1")(y)
+    y = Conv2D(hidden_size, kernel_size=(3,3), strides=(1,1), padding='same', name="Decode_conv_1")(y)
+    y = BatchNormalization(name="Decode_bn_1")(y)
+    y = Activation("relu", name="Decode_relu_1")(y)
+
+    y = UpSampling2D(size=(2,2), interpolation='bilinear', name="Decode_upsample_2")(y)
+    y = Conv2D(256, kernel_size=(3,3), strides=(1,1), padding='same', name="Decode_conv_2")(y)
+    y = BatchNormalization(name="Decode_bn_2")(y)
+    y = Activation("relu", name="Decode_relu_2")(y)
+
+    y = UpSampling2D(size=(2,2), interpolation='bilinear', name="Decode_upsample_3")(y)
+    y = Conv2D(256, kernel_size=(3,3), strides=(1,1), padding='same', name="Decode_conv_3")(y)
+    y = BatchNormalization(name="Decode_bn_3")(y)
+    y = Activation("relu", name="Decode_relu_3")(y)
+
+    y = UpSampling2D(size=(2,2), interpolation='bilinear', name="Decode_upsample_4")(y)
+    y = Conv2D(256, kernel_size=(3,3), strides=(1,1), padding='same', name="Decode_conv_4")(y)
+    y = BatchNormalization(name="Decode_bn_4")(y)
+    y = Activation("relu", name="Decode_relu_4")(y)
+    
+    y = Conv2D(num_classes, kernel_size=(1,1), strides=(1,1), padding='same', 
+        dtype='float32', name="Decode_output")(y)
+    
+    return y
+
+    
+def SETR_PUP(
+    image_size, 
+    patch_size, 
+    num_layers, 
+    num_classes, 
+    hidden_size, 
+    aux_layers,
+    num_heads, 
+    name, 
+    mlp_dim, 
+    dropout=0.1
+):
+    """Build a ViT model.
+
+    Args:
+        image_size: The size of input images.
+        patch_size: The size of each patch (must fit evenly in image_size)
+        num_layers: The number of transformer layers to use.
+        hidden_size: The number of filters to use
+        num_heads: The number of transformer heads
+        mlp_dim: The number of dimensions for the MLP output in the transformers.
+        dropout_rate: fraction of the units to drop for dense layers.
+    """
+    assert image_size % patch_size == 0, "image_size must be a multiple of patch_size"
+    
+    x = Input(shape=(image_size, image_size, 3))
+    y = Conv2D(
+        filters=hidden_size, 
+        kernel_size=patch_size, 
+        strides=patch_size, 
+        padding="valid", 
+        name="embedding"
+    )(x)
+    y = Reshape((y.shape[1] * y.shape[2], hidden_size))(y)
+    y = ClassToken(name="class_token")(y)
+    y = AddPositionEmbs(name="Transformer/posembed_input")(y)
+    
+    y_list = []
+    for n in range(num_layers):
+        y, _ = TransformerBlock(
+            num_heads=num_heads, 
+            mlp_dim=mlp_dim, 
+            dropout=dropout, 
+            name=f"Transformer/encoderblock_{n}"
+        )(y)
+        
+        if aux_layers is not None:
+            if n in aux_layers:
+                y_list.append(y)
+            
+    if aux_layers is not None:
+        y_aux_list = get_aux_heads(y_list, image_size, hidden_size, num_classes, aux_layers)
+            
+    y = Lambda(lambda v: v[:, 1:], name="ExtractToken")(y)
+    y = LayerNormalization(epsilon=1e-6, name="Transformer/encoder_norm_decode")(y)
+    
+    y = get_decode_head(y, image_size, hidden_size, num_classes)
+
+    if aux_layers is not None:
+        out_heads = [y] + y_aux_list
+    else:
+        out_heads = [y]
+    
+    return tf.keras.models.Model(inputs=x, outputs=out_heads, name=name)
