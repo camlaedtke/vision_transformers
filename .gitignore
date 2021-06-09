@@ -131,3 +131,4 @@ dmypy.json
 # Additional stuff
 weights/
 records/
+__pycache__/
